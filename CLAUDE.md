@@ -1,151 +1,96 @@
-# NeoCDJ-Pro System Analysis Document (claude.md)
+# CLAUDE.md
 
-**Project Codename**: NeoCDJ-Pro  
-**Objective**: Develop a **modern, uncompromising, Apple-style** DJ player hardware + firmware from scratch.  
-**Core Constraints**:
-- All **physical buttons, Jog Wheel, Pitch Slider, and knobs** must be **100% identical in position and function** to the original CDJ-2000 layout (zero learning curve for veteran DJs).
-- Extremely **thin chassis** (target thickness ≤ 3.5 cm).
-- **Most critical feature**: **Native USB flash drive (U-disk) hot-plug support + exFAT** (microSD compatible as well).
-- UI must be **pure Apple style** (iOS-level rounded corners, blur effects, dark mode, San Francisco font, smooth 60 fps animations).
-- **Simulation-First** development workflow: **No hardware development board required** for multi-person parallel development, UI debugging, audio DSP testing, or USB simulation.
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-This file is the **complete system requirements document** for **Claude Code / Cursor / Claude.dev**. Please generate the code repository strictly according to this document.
+## Project Overview
 
----
+NeoCDJ-Pro is a CDJ-2000-compatible DJ player with Apple-style UI, built on STM32H7xx + FreeRTOS + LVGL v9. The defining design constraint is a **simulation-first** workflow: all development runs on macOS/Linux via SDL2 before touching hardware. USB flash drive (U-disk) hot-plug with exFAT is the single highest-priority feature.
 
-## 1. Project Overview and Positioning
+## Build Commands
 
-- **Positioning**: A modern player that can directly replace the Pioneer CDJ-2000, while keeping the traditional CDJ look and feel, with a full Apple-style UI upgrade.
-- **Non-compromising Features**:
-  - Lossless audio support (FLAC / WAV / AIFF 24bit/96kHz)
-  - Real-time high-precision Pitch / Tempo / BPM / Beat Grid / Slip / Quantize / Hot Cue / Loop / Memory Cue
-  - Full Rekordbox ANLZXXXX.DAT database parsing (Cue, Waveform, Beat Grid)
-  - Pro DJ Link (Ethernet sync, WiFi expansion possible later)
-  - Ultra-low latency audio processing + high-quality DAC output
-- **Hardware Form Factor**: Custom 4-layer ultra-thin PCB + 7-9 inch high-resolution IPS (LTDC driven) + capacitive touch (optional for browsing) + exact CDJ-2000 physical button matrix replication + high-precision optical Jog encoder + front USB-A Host port + CNC aluminum ultra-thin chassis.
-
----
-
-## 2. Technology Stack (Must Be Strictly Followed)
-
-| Module            | Technology Choice                     | Notes |
-|-------------------|---------------------------------------|-------|
-| Main MCU          | STM32H7xx (H743/H750/H7R preferred)  | Cortex-M7 600 MHz+ |
-| RTOS              | FreeRTOS (official POSIX port for simulator) | Task isolation |
-| GUI               | LVGL v9+ + SquareLine Studio          | Apple-style theme |
-| Build System      | CMake + Ninja                         | Dual-target build |
-| Storage           | USB Host MSC + FatFs + exFAT + microSD | **U-disk hot-plug is core** |
-| Audio             | libFLAC + Helix + custom 32x oversampling interpolation + Pitch DSP | M7 FPU + DSP instructions |
-| Platform Abstraction | platform/ layer (common / stm32 / sim) | Must be implemented |
-| Simulator         | SDL2 + LVGL SDL port + POSIX FreeRTOS | Zero-hardware PC development |
-
-**License**: MIT
-
----
-
-## 3. Repository Structure (Must Be Created 100% According to This)
+All firmware lives under `firmware/`. Two build targets exist:
 
 ```bash
-NeoCDJ-Pro/
-├── README.md
-├── LICENSE
-├── .github/workflows/              # CI: sim + stm32 builds in parallel
-├── docs/
-│   ├── simulation-guide.md         # Keyboard mapping, mock usage
-│   ├── firmware-architecture.md    # System architecture diagram
-│   ├── ui-design-apple.md          # Apple style specification
-│   └── usb-support-guide.md
-├── hardware/                       # KiCad, 3D models, BOM (hardware only)
-├── ui-design/                      # SquareLine Studio .slp files
-├── scripts/
-│   ├── run-sim.sh
-│   └── flash-stm32.sh
-├── firmware/                       # Core (focus area)
-│   ├── CMakeLists.txt
-│   ├── CMakePresets.json
-│   ├── platform/
-│   │   ├── common/                 # hal.h interface definitions
-│   │   ├── stm32/                  # Real hardware implementation
-│   │   └── sim/                    # PC simulator
-│   │       ├── sdl/
-│   │       ├── posix/
-│   │       └── mocks/              # mock_usb_msc.c, mock_audio.c, mock_controls.c etc.
-│   ├── app/                        # 100% cross-platform business logic
-│   │   ├── core/
-│   │   ├── gui/                    # LVGL screens (browser, waveform, cue_editor)
-│   │   ├── audio/
-│   │   ├── storage/                # USB + Rekordbox parser
-│   │   ├── controls/
-│   │   └── network/
-│   ├── tests/                      # Unit tests (audio_dsp, rekordbox, usb_hotplug)
-│   ├── third_party/                # submodules: LVGL, FreeRTOS, FatFs, libFLAC
-│   └── build/
-├── tools/
-└── CHANGELOG.md
+# Simulator (macOS/Linux, requires SDL2)
+cmake -B firmware/build/sim -S firmware -DPLATFORM=sim -G Ninja
+cmake --build firmware/build/sim
+./firmware/build/sim/neo-cdj-sim
+
+# STM32 (requires arm-none-eabi-gcc toolchain)
+cmake -B firmware/build/stm32 -S firmware -DPLATFORM=stm32 -G Ninja
+cmake --build firmware/build/stm32
+
+# Convenience scripts
+./scripts/run-sim.sh
+./scripts/flash-stm32.sh
 ```
----
 
-## 4. Simulation-First Development Mode (Must Be Implemented First)
+Unit tests (under `firmware/tests/`):
+```bash
+cmake -B firmware/build/tests -S firmware -DPLATFORM=sim -DBUILD_TESTS=ON -G Ninja
+cmake --build firmware/build/tests
+ctest --test-dir firmware/build/tests
+# Run a single test binary directly, e.g.:
+./firmware/build/tests/test_rekordbox_parser
+```
 
-- **Dual Build Targets**:
-  - `neo-cdj-sim` (PC simulator, SDL2-based)
-  - `neo-cdj-stm32` (real hardware)
-- **CMake Option**: `-DPLATFORM=sim|stm32`
-- **Simulator Features**:
-  - LVGL + SDL2 window with real-time Apple-style UI
-  - Keyboard/mouse fully emulates all CDJ-2000 buttons + Jog Wheel (mouse drag) + Pitch Slider
-  - mock USB: PC folder `test_assets/mock_usb/` simulates U-disk hot-plug
-  - SDL2 audio output (hear Pitch/Slip effects in real time)
-  - FreeRTOS POSIX port (task scheduling identical to hardware)
-- **Debugging**:
-  - VSCode + CMake Tools + C/C++ extension
-  - Built-in LV_USE_PERF_MONITOR + LV_USE_MEM_MONITOR
-  - SquareLine Studio export → instant preview in simulator
+## Architecture: Platform Abstraction Layer
 
----
+**The golden rule**: `app/` code may **never** call SDL2 or STM32 HAL directly. All hardware access must go through `platform/common/hal.h`.
 
-## 5. UI Design Requirements (Apple Style)
+```
+firmware/
+├── platform/
+│   ├── common/hal.h        ← single interface all app/ code calls
+│   ├── stm32/              ← HAL impl for real hardware
+│   └── sim/
+│       ├── sdl/            ← SDL2 display + audio backend
+│       ├── posix/          ← FreeRTOS POSIX port
+│       └── mocks/          ← mock_usb_msc.c, mock_audio.c, mock_controls.c
+└── app/                    ← 100% cross-platform business logic
+    ├── core/               ← FreeRTOS tasks, event bus
+    ├── gui/                ← LVGL screens: browser, waveform, cue_editor
+    ├── audio/              ← libFLAC/Helix decode + Pitch DSP
+    ← storage/             ← USB MSC + FatFs/exFAT + Rekordbox ANLZ parser
+    ├── controls/           ← button matrix, jog wheel, pitch slider
+    └── network/            ← Pro DJ Link (future)
+```
 
-- Overall aesthetic: Dark mode, heavy use of rounded corners, frosted glass blur, SF Pro font, fluid animations
-- Main screen:
-  - Left browser (Finder-like: album grid + list + search)
-  - Large central waveform (dual-channel color, real-time scrolling, Cue points highlighted)
-  - Right-side info + Hot Cue panel
-- All animations at 60 fps (LVGL Canvas waveform rendering)
-- Performance requirement: Perf Monitor CPU < 40%
+**USB mock**: `test_assets/mock_usb/` acts as the virtual U-disk. Drop/remove audio files there to simulate hot-plug insert/eject.
 
----
+## Technology Stack
 
-## 6. Feature Priority (USB Is Highest Priority)
+| Layer | Choice |
+|---|---|
+| MCU | STM32H7xx (H743/H750/H7R), Cortex-M7 @ 600 MHz+ |
+| RTOS | FreeRTOS (POSIX port in simulator) |
+| GUI | LVGL v9+ (submodule in `third_party/`) |
+| Build | CMake + Ninja, `-DPLATFORM=sim\|stm32` |
+| Storage | USB Host MSC + FatFs + exFAT |
+| Audio | libFLAC + Helix MP3 + custom 32x oversampling Pitch DSP |
+| Simulator | SDL2 + LVGL SDL driver |
 
-1. **U-disk Support** (Most Critical)
-   - USB Host MSC + exFAT hot-plug
-   - Auto-scan Rekordbox folder + ANLZ files
-   - Auto-pause and show “USB removed” on unplug
-2. Exact CDJ-2000 button mapping
-3. Full Rekordbox parser
-4. Real-time audio DSP (Pitch/BPM/Slip/Beat Grid)
-5. Apple-style waveform + browser
-6. Pro DJ Link (later)
+Third-party libraries are git submodules under `firmware/third_party/` (LVGL, FreeRTOS, FatFs, libFLAC).
 
----
+## UI Rules (LVGL Apple Style)
 
-## 7. Development Milestones (Claude Should Generate in This Order)
+- Dark mode only; frosted-glass blur panels; SF Pro font (or closest available); all corner radii ≥ 12px.
+- Waveform rendered via LVGL Canvas — must sustain 60 fps with CPU < 40% (verify with `LV_USE_PERF_MONITOR`).
+- Three-panel main layout: left file browser (Finder-style), center waveform + transport, right Hot Cue panel.
+- Use latest LVGL v9 style APIs — do not use deprecated v8 style calls.
 
-**Phase 0**: Repository skeleton + CMake dual-target + platform abstraction layer + simulator boots to blank LVGL window  
-**Phase 1**: mock USB + FatFs + basic Apple-style file browser  
-**Phase 2**: LVGL Apple theme + waveform Canvas + keyboard mapping  
-**Phase 3**: Audio decoding + Pitch DSP + SDL2 real-time playback  
-**Phase 4**: Rekordbox ANLZ parser + Cue/Loop support  
-**Phase 5**: Full UI integration + performance optimization + test cases  
+## Development Milestones (implement in order)
 
----
+- **Phase 0** — CMake dual-target skeleton + `hal.h` stubs + simulator opens blank LVGL window
+- **Phase 1** — mock USB + FatFs mount + basic Apple-style file browser
+- **Phase 2** — Full LVGL Apple theme + waveform Canvas + keyboard/mouse CDJ-2000 mapping
+- **Phase 3** — Audio decode (FLAC/WAV) + Pitch DSP + SDL2 real-time playback
+- **Phase 4** — Rekordbox ANLZXXXX.DAT parser (Cue points, Beat Grid, Waveform data)
+- **Phase 5** — Full UI integration + perf optimization + unit test coverage
 
-## 8. Claude Development Instructions
+## Key Constraints
 
-1. **Before generating any code**, always read this file first.
-2. **Strictly follow the repository structure** — do not create extra folders arbitrarily.
-3. **All app/ modules must go through `platform/common/hal.h` interfaces** — never call STM32 HAL or SDL directly.
-4. **U-disk mock** must support hot-plug (folder switch = insert/eject simulation).
-5. **UI must be Apple style** — use latest LVGL style APIs.
-6. **When generating code**, also provide the corresponding `CMakeLists.txt` changes and `simulation-guide.md` updates.
+- Physical button layout must be **pixel-identical** to CDJ-2000 — no rearranging for convenience.
+- Chassis target ≤ 3.5 cm thick — affects PCB stackup choices in `hardware/`.
+- When adding any new file under `app/`, also update `firmware/CMakeLists.txt` and note any keyboard mapping additions in `docs/simulation-guide.md`.
+- CI (`.github/workflows/`) must build both `sim` and `stm32` targets in parallel on every push.

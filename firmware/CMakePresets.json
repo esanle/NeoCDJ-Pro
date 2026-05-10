@@ -1,0 +1,69 @@
+{
+  "version": 3,
+  "configurePresets": [
+    {
+      "name": "sim",
+      "displayName": "PC Simulator (SDL2)",
+      "description": "Build the desktop simulator — no hardware required",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/sim",
+      "cacheVariables": {
+        "PLATFORM": "sim",
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_OSX_ARCHITECTURES": "arm64"
+      }
+    },
+    {
+      "name": "sim-release",
+      "displayName": "PC Simulator (Release)",
+      "inherits": "sim",
+      "binaryDir": "${sourceDir}/build/sim-release",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "stm32",
+      "displayName": "STM32H743 Firmware",
+      "description": "Cross-compile for STM32H7 hardware",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/stm32",
+      "cacheVariables": {
+        "PLATFORM": "stm32",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "stm32-debug",
+      "displayName": "STM32H743 Firmware (Debug)",
+      "inherits": "stm32",
+      "binaryDir": "${sourceDir}/build/stm32-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "tests",
+      "displayName": "Unit Tests",
+      "inherits": "sim",
+      "binaryDir": "${sourceDir}/build/tests",
+      "cacheVariables": {
+        "BUILD_TESTS": "ON"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "sim",
+      "configurePreset": "sim"
+    },
+    {
+      "name": "stm32",
+      "configurePreset": "stm32"
+    },
+    {
+      "name": "tests",
+      "configurePreset": "tests"
+    }
+  ]
+}
